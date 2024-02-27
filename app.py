@@ -37,72 +37,37 @@ def read_pdf(filename):
     print(len(context))
     return context
 
-def split_text(text, chunk_size=5000):
+def split_text(text, chunk_size=500):
     """
     Splits the given text into chunks of approximately the specified chunk size.
 
     Args:
     text (str): The text to split.
 
-    chunk_size (int): The desired size of each chunk (in characters).
+    chunk_size (int): The desired size of each chunk (in words).
 
     Returns:
     List[str]: A list of chunks, each of approximately the specified chunk size.
     """
 
     chunks = []
-    current_chunk = StringIO()
-    current_size = 0
-    sentences = sent_tokenize(text)
-    for sentence in sentences:
-        sentence_size = len(sentence)
-        if sentence_size > chunk_size:
-            while sentence_size > chunk_size:
-                chunk = sentence[:chunk_size]
-                chunks.append(chunk)
-                sentence = sentence[chunk_size:]
-                sentence_size -= chunk_size
-                current_chunk = StringIO()
-                current_size = 0
-        if current_size + sentence_size < chunk_size:
-            current_chunk.write(sentence)
-            current_size += sentence_size
-        else:
-            chunks.append(current_chunk.getvalue())
-            current_chunk = StringIO()
-            current_chunk.write(sentence)
-            current_size = sentence_size
-        if current_chunk:
-            chunks.append(current_chunk.getvalue())
-        return chunks
-    
-    
-def gpt3_completion(prompt, engine='gpt-3.5-turbo', temp=0.5, top_p=0.3, tokens=1000):
+    def splitter(n, s):
+        pieces = s.split()
+        return (" ".join(pieces[i:i+n]) for i in range(0, len(pieces), n))
 
-    prompt = prompt.encode(encoding='ASCII',errors='ignore').decode()
-    try:
-        response = openai.Completion.create(
-            engine=engine,
-            prompt=prompt,
-            temperature=temp,
-            top_p=top_p,
-            max_tokens=tokens
-        )
-        return response.choices[0].text.strip()
-    except Exception as oops:
-        return "GPT-3 error: %s" % oops
-    
-    
+    for piece in splitter(chunk_size, text):
+        chunks.append(piece)
+    return chunks
     
 def summrize(document):
     chunks = split_text(document)
     summaries = []
+    sys_prompt = "يرجى تحويل النص إلى مجموعة متنوعة من الأسئلة والإجابات الخاصة بها بحيث يتم تغطية النص بالكامل بالأسئلة والأجوبة. وينبغي أن يكون الناتج سؤالاً يتبعه إجابة وهكذا. حاول تكوين أكبر عدد ممكن من أزواج الأسئلة والأجوبة"
     for chunk in chunks:
-        sys_prompt = "Please convert the text into variety of questions and their respective answers such that it summarizes the text. The output should be a question followed by an answer and so on...: \n"
         usr_prompt = chunk
         client = OpenAI()
         completion = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4",
             messages=[
                 {"role": "system", "content": sys_prompt},
                 {"role": "user", "content": usr_prompt}
@@ -116,16 +81,15 @@ def summrize(document):
 def getQuestionsAndAnswers(file):
     text = read_pdf(file)
     output = summrize(text)
-    text_file = open("output.txt", "w")
-    n = text_file.write(output)
-    text_file.close()
     list_of_qa = output.split("\n\n")
-
+    print("list of qa")
+    print(list_of_qa)
     qa = []
     for element in list_of_qa:
-        arr = element.split(":")
-        question = arr[1].split("?")[0] + "?"
-        answer = arr[2]
+        print(element)
+        arr = element.split("\n")
+        question = arr[0]
+        answer = arr[1]
         qa.append({ "question": question, "answer": answer })
 
     return qa
@@ -136,13 +100,15 @@ def getQuestionsAndAnswers(file):
 def upload_file():
     if 'file' not in request.files:
         return jsonify({'error': 'No file part'}), 400
-
+    print(request)
     file = request.files['file']
-    library = request.form["library"]
+    print(file)
+    library = request.form["libraryId"]
 
     if file.filename == '':
         return jsonify({'error': 'No selected file'}), 400
-    
+    print("app upload folder")
+    print(app.config['UPLOAD_FOLDER'])
     directory_path = os.path.join(app.config['UPLOAD_FOLDER'], library)
 
     if file and allowed_file(file.filename):
